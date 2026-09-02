@@ -1,0 +1,61 @@
+services:
+  # ── PostgreSQL Database ─────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: framevault-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-framevault}
+      POSTGRES_USER: ${POSTGRES_USER:-framevault}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-framevault}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-framevault} -d ${POSTGRES_DB:-framevault}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI Backend ─────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: framevault-backend
+    restart: unless-stopped
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-framevault}:${POSTGRES_PASSWORD:-framevault}@db:5432/${POSTGRES_DB:-framevault}
+      JWT_SECRET: ${JWT_SECRET:-framevault-super-secret-jwt-key-change-in-production}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-framevault-assets}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      LOCAL_STORAGE_PATH: /app/local_storage
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend_storage:/app/local_storage
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── Frontend (Nginx + React SPA) ────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: framevault-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  backend_storage:

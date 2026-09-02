@@ -34,7 +34,7 @@
 /* ── Base Styles ──────────────────────────────────────────────────────────── */
 @layer base {
   * {
-    @apply border-border;
+    @apply border-[var(--border-subtle)];
   }
 
   html {

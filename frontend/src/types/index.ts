@@ -4,8 +4,10 @@
 export interface User {
   id: string
   email: string
-  createdAt: string
-  updatedAt: string
+  created_at?: string
+  updated_at?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface AuthState {
@@ -27,19 +29,24 @@ export interface RegisterCredentials {
 
 export interface AuthResponse {
   user: User
-  accessToken: string
+  access_token: string
 }
 
 // ── Collections ───────────────────────────────────────────────────────────────
 export interface Collection {
   id: string
-  userId: string
+  user_id?: string
+  userId?: string
   name: string
   description: string | null
-  assetCount: number
-  coverImageUrl: string | null
-  createdAt: string
-  updatedAt: string
+  asset_count?: number
+  assetCount?: number
+  cover_image_url?: string | null
+  coverImageUrl?: string | null
+  created_at?: string
+  createdAt?: string
+  updated_at?: string
+  updatedAt?: string
 }
 
 export interface CreateCollectionPayload {
@@ -57,21 +64,32 @@ export type ContentType = 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif
 
 export interface Asset {
   id: string
-  userId: string
-  collectionId: string | null
+  user_id?: string
+  userId?: string
+  collection_id?: string | null
+  collectionId?: string | null
   title: string
   description: string | null
   tags: string[]
-  s3Key: string
-  contentType: ContentType
-  fileSize: number
-  isFavorite: boolean
-  isDeleted: boolean
-  deletedAt: string | null
-  previewUrl: string | null  // Presigned GET URL — time-limited
-  createdAt: string
-  updatedAt: string
-  collection?: Pick<Collection, 'id' | 'name'>
+  s3_key?: string
+  s3Key?: string
+  content_type?: ContentType
+  contentType?: ContentType
+  file_size?: number
+  fileSize?: number
+  is_favorite?: boolean
+  isFavorite?: boolean
+  is_deleted?: boolean
+  isDeleted?: boolean
+  deleted_at?: string | null
+  deletedAt?: string | null
+  previewUrl?: string | null
+  preview_url?: string | null
+  created_at?: string
+  createdAt?: string
+  updated_at?: string
+  updatedAt?: string
+  collection?: { id: string; name: string }
 }
 
 export interface CreateAssetPayload {
@@ -89,13 +107,18 @@ export interface UpdateAssetPayload {
   description?: string
   tags?: string[]
   collectionId?: string | null
+  collection_id?: string | null
   isFavorite?: boolean
+  is_favorite?: boolean
 }
 
 export interface UploadUrlResponse {
-  assetId: string
-  uploadUrl: string   // Presigned PUT URL (short-lived)
-  s3Key: string
+  assetId?: string
+  asset_id?: string
+  uploadUrl?: string
+  upload_url?: string
+  s3Key?: string
+  s3_key?: string
 }
 
 // ── Tags ─────────────────────────────────────────────────────────────────────
@@ -115,8 +138,10 @@ export interface PaginatedResponse<T> {
   items: T[]
   total: number
   page: number
-  pageSize: number
-  totalPages: number
+  pageSize?: number
+  page_size?: number
+  totalPages?: number
+  total_pages?: number
 }
 
 // ── UI State ─────────────────────────────────────────────────────────────────
@@ -124,7 +149,7 @@ export type Theme = 'light' | 'dark' | 'system'
 
 export type SortDirection = 'asc' | 'desc'
 
-export type AssetSortField = 'createdAt' | 'updatedAt' | 'title' | 'fileSize'
+export type AssetSortField = 'created_at' | 'updated_at' | 'title' | 'file_size'
 
 export interface AssetFilters {
   search: string
@@ -137,13 +162,20 @@ export interface AssetFilters {
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export interface DashboardStats {
-  totalAssets: number
-  totalCollections: number
-  totalStorageBytes: number
-  favoriteCount: number
-  recentAssets: Asset[]
-  recentCollections: Collection[]
-  favoriteAssets: Asset[]
+  totalAssets?: number
+  total_assets?: number
+  totalCollections?: number
+  total_collections?: number
+  totalStorageBytes?: number
+  total_storage_bytes?: number
+  favoriteCount?: number
+  favorite_count?: number
+  recentAssets?: Asset[]
+  recent_assets?: Asset[]
+  recentCollections?: Collection[]
+  recent_collections?: Collection[]
+  favoriteAssets?: Asset[]
+  favorite_assets?: Asset[]
 }
 
 // ── File Upload ───────────────────────────────────────────────────────────────

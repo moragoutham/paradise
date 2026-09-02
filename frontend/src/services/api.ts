@@ -119,13 +119,7 @@ export const assetsApi = {
   confirmUpload: (id: string) => apiClient.patch(`/assets/${id}/confirm-upload`),
   update: (
     id: string,
-    data: {
-      title?: string
-      description?: string
-      tags?: string[]
-      collectionId?: string | null
-      isFavorite?: boolean
-    },
+    data: any,
   ) => apiClient.patch(`/assets/${id}`, data),
   delete: (id: string) => apiClient.delete(`/assets/${id}`),
   restore: (id: string) => apiClient.patch(`/assets/${id}/restore`),
