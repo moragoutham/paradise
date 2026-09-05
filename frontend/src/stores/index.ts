@@ -19,7 +19,7 @@ export const useAuthStore = create<AuthStore>()(
       user: null,
       accessToken: null,
       isAuthenticated: false,
-      isLoading: true,
+      isLoading: false,
       setUser: (user, accessToken) =>
         set({ user, accessToken, isAuthenticated: true, isLoading: false }),
       clearAuth: () =>
@@ -33,6 +33,11 @@ export const useAuthStore = create<AuthStore>()(
         accessToken: state.accessToken,
         isAuthenticated: state.isAuthenticated,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.setLoading(false)
+        }
+      },
     },
   ),
 )

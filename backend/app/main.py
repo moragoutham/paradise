@@ -30,6 +30,7 @@ app.add_middleware(
 
 # Health Check
 @app.get("/health", tags=["health"])
+@app.get(f"{settings.API_V1_STR}/health", tags=["health"])
 def health_check():
     return {
         "status": "healthy",

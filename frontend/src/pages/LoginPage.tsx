@@ -56,6 +56,26 @@ export function LoginPage() {
         </p>
       </div>
 
+      {/* Demo Credentials Quick Fill Banner */}
+      <div className="p-4 rounded-xl bg-brand-500/10 border border-brand-500/25 flex items-center justify-between gap-4">
+        <div className="space-y-0.5">
+          <p className="text-xs font-semibold text-brand-400 uppercase tracking-wider">Demo Credentials</p>
+          <p className="text-xs text-[var(--text-secondary)] font-mono">devops.lead@framevault.io</p>
+          <p className="text-[11px] text-[var(--text-tertiary)] font-mono">Password123!Secure</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setEmail('devops.lead@framevault.io')
+            setPassword('Password123!Secure')
+            setError(null)
+          }}
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 text-white transition-all shadow-sm flex-shrink-0 cursor-pointer"
+        >
+          Auto-fill
+        </button>
+      </div>
+
       {/* Error banner */}
       {error && (
         <motion.div
