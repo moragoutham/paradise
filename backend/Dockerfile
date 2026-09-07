@@ -8,11 +8,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install system dependencies (curl for health check, libpq for postgres)
+# Install system dependencies (curl for health check)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    libpq-dev \
-    gcc \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

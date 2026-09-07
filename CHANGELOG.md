@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Frontend: Authentication pages (login, register)
 - Frontend: Dashboard, Collections, Assets, Favorites, Trash, Settings page shells
 - Frontend: Responsive sidebar layout with collapsible navigation
-- Backend: FastAPI application with PostgreSQL
+- Backend: FastAPI application with MySQL (via SQLAlchemy & PyMySQL)
 - Backend: JWT authentication (register, login, logout)
 - Backend: Collections CRUD API
 - Backend: Assets API with S3 presigned URL upload flow

@@ -117,11 +117,16 @@ def run_e2e_test():
     print(f"   [PASS] Dashboard Stats -> Total Assets: {stats['total_assets']}, Collections: {stats['total_collections']}, Storage: {stats['total_storage_bytes']} bytes, Favorites: {stats['favorite_count']}")
 
     # 10. Frontend Availability
-    print("\n10. Testing Frontend Dev Server (http://127.0.0.1:5173/)...")
-    front_res = client.get("http://127.0.0.1:5173/")
+    print("\n10. Testing Frontend Server (http://127.0.0.1:3000/ or :5173/)...")
+    front_url = "http://127.0.0.1:3000/"
+    try:
+        front_res = client.get(front_url)
+    except Exception:
+        front_url = "http://127.0.0.1:5173/"
+        front_res = client.get(front_url)
     assert front_res.status_code == 200
     assert "FrameVault" in front_res.text
-    print("   [PASS] Frontend server is live and serving the FrameVault single page application!")
+    print(f"   [PASS] Frontend server is live at {front_url} and serving the FrameVault single page application!")
 
     print("\n=======================================================")
     print("   ALL 10 END-TO-END WORKFLOW TESTS PASSED (100%)!")

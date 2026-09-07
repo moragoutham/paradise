@@ -1,74 +1,141 @@
-# FrameVault — AWS Deployment Guide
+# FrameVault — Cost-Optimized AWS Deployment Guide
 
-This guide provides step-by-step instructions for deploying **FrameVault** to Amazon Web Services (AWS) using **Amazon EC2**, **Amazon S3**, and **IAM Instance Roles**.
+> **Goal:** Deploy the full FrameVault stack on AWS for as little money as possible,
+> so your **$100 credit** lasts many months — or even through the entire portfolio
+> showcase period.
 
 ---
 
-## Architecture Overview
+## 1. Cost Analysis — What This Project Actually Needs
+
+Before spending a dollar, let's look at every component FrameVault runs and map it to
+an AWS service.
+
+### 1.1 Architecture Components
+
+| Component | What It Does | Fits On |
+|---|---|---|
+| **Nginx** | Serves the React SPA, reverse-proxies `/api` to FastAPI | Same EC2 instance |
+| **FastAPI** (Uvicorn) | REST API, JWT auth, generates S3 presigned URLs | Same EC2 instance |
+| **MySQL** | Stores users, collections, assets metadata | Same EC2 instance |
+| **Amazon S3** | Stores actual image files (direct browser upload) | Managed AWS service |
+
+> **Key Insight:** Because the browser uploads files **directly to S3** via
+> presigned URLs, the EC2 instance never handles file bytes. It only handles tiny
+> JSON API requests. This means even the smallest instance can serve this workload.
+
+### 1.2 Monthly Cost Breakdown (Optimized for $100 budget)
+
+All prices are **us-east-1** (N. Virginia), which is cheapest. Use your free tier where noted.
+
+| AWS Service | Config | Monthly Cost | Notes |
+|---|---|---|---|
+| **EC2 t2.micro** | 1 vCPU, 1 GB RAM | **$0.00** | Free tier: 750 hrs/month for 12 months |
+| **EC2 t3.micro** (after free tier) | 2 vCPU, 1 GB RAM | ~**$7.59** | After free tier expires |
+| **EBS gp3 Storage** | 20 GB root disk | **$0.00** | Free tier: 30 GB/month |
+| **S3 Storage** | 5 GB images | **$0.12** | Free tier: 5 GB for 12 months; $0.023/GB after |
+| **S3 PUT Requests** | ~1,000 uploads | **$0.005** | $0.005 per 1,000 PUT requests |
+| **S3 GET Requests** | ~10,000 views | **$0.004** | $0.0004 per 1,000 GET requests |
+| **Elastic IP** | 1 static public IP | **$0.00** | Free while attached to a running instance |
+| **Data Transfer OUT** | ~5 GB/month | **$0.00** | Free tier: 100 GB/month for 12 months |
+
+### Total Estimated Monthly Cost
+
+| Phase | Monthly Bill | Explanation |
+|---|---|---|
+| **First 12 months (free tier)** | **~$0.12** | EC2 + EBS = free tier; only S3 storage costs money |
+| **After free tier** | **~$7.60-$8.00** | t3.micro + 20 GB EBS + minimal S3 |
+
+**At ~$8/month, your $100 credit lasts approximately 12 months after free tier expires.**
+
+### 1.3 What We Are NOT Using (Cost Avoidance)
+
+| Service | Why We Skipped It | Saves |
+|---|---|---|
+| RDS MySQL (db.t3.micro) | Runs MySQL inside Docker on EC2 instead | ~$15/month |
+| Application Load Balancer | Nginx on EC2 handles routing | ~$16/month |
+| NAT Gateway | No private subnets needed for a portfolio project | ~$32/month |
+| ElastiCache Redis | No caching layer required | ~$14/month |
+| CloudFront CDN | S3 presigned URLs serve assets directly | ~$1-5/month |
+
+> **Total saved vs naive deployment: ~$78/month**
+
+---
+
+## 2. Deployment Architecture (Single EC2 Instance)
 
 ```
-                 Internet
-                    │
-            [Port 80 / 443]
-                    ▼
-          ┌───────────────────┐
-          │  EC2 Instance     │
-          │                   │
-          │  ┌─────────────┐  │           Direct S3 Upload (Presigned URL)
-          │  │ Nginx (80)  │  │◄─────────────────────────────────────┐
-          │  └──────┬──────┘  │                                      │
-          │         │ /api    │                                      │
-          │  ┌──────▼──────┐  │       Generates Presigned URL        │
-          │  │ Backend     │──┼──────────────────────────────┐       │
-          │  └──────┬──────┘  │                               ▼       │
-          │         │         │                          ┌─────────┐  │
-          │  ┌──────▼──────┐  │                          │  AWS S3 │  │
-          │  │ PostgreSQL  │  │                          │  Bucket │──┘
-          │  └─────────────┘  │                          └─────────┘
-          └───────────────────┘
+                          INTERNET
+                              |
+                         Port 80/443
+                              |
+                    +---------v--------+
+                    |  EC2 t2.micro    |   <- IAM Role (S3 access, no keys stored)
+                    |                  |
+                    |  Docker Network  |
+                    |  +------------+  |
+                    |  | Nginx :80  |  |
+                    |  +-----+------+  |
+                    |  /api/ |  /      |
+                    |  +-----v------+  |      +------------------+
+                    |  | FastAPI    |--+----->|  Amazon S3       |
+                    |  | :8000      |  |      |  (presigned URLs) |
+                    |  +-----+------+  |      +------------------+
+                    |  +-----v------+  |
+                    |  | MySQL      |  |
+                    |  | :3306      |  |
+                    |  +------------+  |
+                    |                  |
+                    |  20 GB EBS disk  |
+                    +------------------+
 ```
 
----
-
-## Prerequisites
-
-1. An **AWS Account** with administrative or appropriate IAM permissions.
-2. **AWS CLI** installed and configured locally (`aws configure`) or use the AWS Management Console.
-3. An **SSH Key Pair** created in your chosen AWS Region (e.g., `us-east-1`).
+**Everything runs in Docker on a single t2.micro EC2 instance.**
 
 ---
 
-## Step 1: Create and Configure the Amazon S3 Bucket
+## 3. Pre-Deployment Checklist
 
-Visual assets are stored in Amazon S3. The browser uploads assets directly to S3 via secure **presigned PUT URLs**.
+Before starting, make sure you have:
 
-### 1.1 Create the S3 Bucket
+- [ ] An AWS account
+- [ ] AWS CLI installed on your laptop: `aws --version`
+- [ ] AWS CLI configured: `aws configure`
+- [ ] An SSH key pair created in AWS Console (EC2 > Key Pairs)
+- [ ] Git installed on your laptop
 
-Choose a globally unique name (e.g., `framevault-assets-prod-12345`):
+---
+
+## 4. Step-by-Step Deployment
+
+### Step 1 — Create the S3 Bucket
+
+> **Free tier:** 5 GB of S3 Standard storage, 20,000 GET requests, 2,000 PUT requests per month for 12 months.
+
+**1.1 Create the bucket (choose a globally unique name):**
 
 ```bash
+# Replace "framevault-assets-yourname-2024" with a unique name of your choice
+BUCKET_NAME="framevault-assets-yourname-2024"
+REGION="us-east-1"
+
 aws s3api create-bucket \
-  --bucket framevault-assets-prod-12345 \
-  --region us-east-1
+  --bucket $BUCKET_NAME \
+  --region $REGION
 ```
-*(Note: If using a region other than `us-east-1`, add `--create-bucket-configuration LocationConstraint=<region>`)*
 
-### 1.2 Enable Block Public Access (Security Best Practice)
-
-All uploads and downloads use presigned URLs, so the bucket must remain strictly **private**:
+**1.2 Block all public access (assets served via presigned URLs only):**
 
 ```bash
 aws s3api put-public-access-block \
-  --bucket framevault-assets-prod-12345 \
+  --bucket $BUCKET_NAME \
   --public-access-block-configuration \
     "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
 ```
 
-### 1.3 Configure S3 CORS (Critical for Direct Browser Uploads)
+**1.3 Configure S3 CORS (required for direct browser-to-S3 PUT uploads):**
 
-Because the user's web browser performs a direct `PUT` request to Amazon S3, S3 must allow CORS from your application domain.
-
-Create a file named `cors.json`:
+Create a file called `s3-cors.json` on your laptop:
 
 ```json
 {
@@ -76,11 +143,7 @@ Create a file named `cors.json`:
     {
       "AllowedHeaders": ["*"],
       "AllowedMethods": ["PUT", "GET", "HEAD"],
-      "AllowedOrigins": [
-        "http://<YOUR_EC2_PUBLIC_IP>",
-        "https://<YOUR_CUSTOM_DOMAIN>",
-        "http://localhost:5173"
-      ],
+      "AllowedOrigins": ["*"],
       "ExposeHeaders": ["ETag"],
       "MaxAgeSeconds": 3600
     }
@@ -88,23 +151,25 @@ Create a file named `cors.json`:
 }
 ```
 
-Apply the CORS configuration:
+Apply it:
 
 ```bash
 aws s3api put-bucket-cors \
-  --bucket framevault-assets-prod-12345 \
-  --cors-configuration file://cors.json
+  --bucket $BUCKET_NAME \
+  --cors-configuration file://s3-cors.json
 ```
 
 ---
 
-## Step 2: Create IAM Role for EC2 (No Hardcoded Keys)
+### Step 2 — Create IAM Role for EC2 (No API Keys Stored on Server)
 
-Instead of hardcoding `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, attach an **IAM Instance Profile** to your EC2 instance. The AWS SDK (`boto3`) automatically retrieves temporary credentials.
+> **Why:** Instead of putting `AWS_ACCESS_KEY_ID` in an `.env` file (security risk),
+> we give the EC2 instance a **role** that grants S3 access automatically. The backend
+> code already supports this — `boto3` automatically reads the role credentials.
 
-### 2.1 Create S3 Least-Privilege Policy
+**2.1 Create a least-privilege S3 policy:**
 
-Create a policy file named `s3-policy.json`:
+Create `iam-s3-policy.json` on your laptop (replace the bucket name):
 
 ```json
 {
@@ -117,28 +182,29 @@ Create a policy file named `s3-policy.json`:
         "s3:PutObject",
         "s3:GetObject",
         "s3:DeleteObject",
+        "s3:HeadObject",
         "s3:ListBucket"
       ],
       "Resource": [
-        "arn:aws:s3:::framevault-assets-prod-12345",
-        "arn:aws:s3:::framevault-assets-prod-12345/*"
+        "arn:aws:s3:::framevault-assets-yourname-2024",
+        "arn:aws:s3:::framevault-assets-yourname-2024/*"
       ]
     }
   ]
 }
 ```
 
-Create the IAM Policy:
-
 ```bash
 aws iam create-policy \
   --policy-name FrameVaultS3Policy \
-  --policy-document file://s3-policy.json
+  --policy-document file://iam-s3-policy.json
 ```
 
-### 2.2 Create the EC2 IAM Role
+Note the `"Arn"` value returned (looks like `arn:aws:iam::123456789012:policy/FrameVaultS3Policy`).
 
-Create trust policy file `trust-policy.json`:
+**2.2 Create EC2 IAM Role:**
+
+Create `ec2-trust.json`:
 
 ```json
 {
@@ -153,21 +219,21 @@ Create trust policy file `trust-policy.json`:
 }
 ```
 
-Create Role and attach policy:
-
 ```bash
-# Create IAM Role
+# Create the role
 aws iam create-role \
   --role-name FrameVaultEC2Role \
-  --assume-role-policy-document file://trust-policy.json
+  --assume-role-policy-document file://ec2-trust.json
 
-# Attach the S3 Policy (replace YOUR_ACCOUNT_ID)
+# Attach the S3 policy (replace YOUR_ACCOUNT_ID)
 aws iam attach-role-policy \
   --role-name FrameVaultEC2Role \
-  --policy-arn arn:aws:iam::<YOUR_ACCOUNT_ID>:policy/FrameVaultS3Policy
+  --policy-arn arn:aws:iam::YOUR_ACCOUNT_ID:policy/FrameVaultS3Policy
 
-# Create Instance Profile and attach Role
-aws iam create-instance-profile --instance-profile-name FrameVaultInstanceProfile
+# Create instance profile and attach role
+aws iam create-instance-profile \
+  --instance-profile-name FrameVaultInstanceProfile
+
 aws iam add-role-to-instance-profile \
   --instance-profile-name FrameVaultInstanceProfile \
   --role-name FrameVaultEC2Role
@@ -175,199 +241,399 @@ aws iam add-role-to-instance-profile \
 
 ---
 
-## Step 3: Launch and Configure EC2 Instance
+### Step 3 — Create Security Group
 
-### 3.1 Security Group Rules
+```bash
+# Create security group
+SG_ID=$(aws ec2 create-security-group \
+  --group-name framevault-sg \
+  --description "FrameVault Web Application" \
+  --query 'GroupId' --output text)
 
-Create a Security Group with the following inbound rules:
+echo "Security Group ID: $SG_ID"
 
-| Type | Port | Source | Description |
-|---|---|---|---|
-| SSH | 22 | `My IP` (or restricted CIDR) | Admin access |
-| HTTP | 80 | `0.0.0.0/0` | Public web traffic (Nginx) |
-| HTTPS | 443 | `0.0.0.0/0` | Secure web traffic (SSL) |
+# Allow SSH (your IP only - find it at: curl ifconfig.me)
+aws ec2 authorize-security-group-ingress \
+  --group-id $SG_ID \
+  --protocol tcp --port 22 --cidr YOUR.IP.ADDRESS.HERE/32
 
-> ⚠️ **Security Warning**: Never expose port 5432 (PostgreSQL) or port 8000 (FastAPI directly) to `0.0.0.0/0`. They communicate via the internal Docker bridge network.
+# Allow HTTP (public)
+aws ec2 authorize-security-group-ingress \
+  --group-id $SG_ID \
+  --protocol tcp --port 80 --cidr 0.0.0.0/0
 
-### 3.2 Launch Instance
+# Allow HTTPS (for later SSL setup)
+aws ec2 authorize-security-group-ingress \
+  --group-id $SG_ID \
+  --protocol tcp --port 443 --cidr 0.0.0.0/0
+```
 
-- **AMI**: Ubuntu Server 24.04 LTS (HVM) or Amazon Linux 2023
-- **Instance Type**: `t3.small` (recommended, 2 vCPU, 2GB RAM) or `t2.micro` (free tier, ensure swap memory is added)
-- **IAM Instance Profile**: `FrameVaultInstanceProfile`
-- **Security Group**: Selected from Step 3.1
-- **Key Pair**: Your SSH key pair
-- **Storage**: 20–30 GB gp3
+> **Important:** Do NOT open ports 8000 (FastAPI) or 3306 (MySQL) to the public. Only ports 22 and 80 should be open in your Security Group. All inter-container communication happens over Docker's internal private bridge network.
 
 ---
 
-## Step 4: Install Docker & Docker Compose on EC2
+### Step 4 — Launch EC2 Instance (Free Tier)
 
-Connect via SSH to your instance:
+**In AWS Console → EC2 → Launch Instance:**
+
+| Setting | Value |
+|---|---|
+| **Name** | `framevault-prod` |
+| **AMI** | Ubuntu Server 24.04 LTS (HVM), SSD — 64-bit |
+| **Instance Type** | `t2.micro` — **Free tier eligible** (750 hours/month) |
+| **Key Pair** | Your existing key pair |
+| **Security Group** | `framevault-sg` |
+| **Storage** | 20 GB gp3 (Free tier: 30 GB included) |
+| **IAM Instance Profile** | `FrameVaultInstanceProfile` |
+
+Click **Launch Instance**. Wait ~1 minute for it to start.
+
+**(Optional but recommended) Allocate an Elastic IP (keeps your IP stable across reboots):**
 
 ```bash
-ssh -i /path/to/key.pem ubuntu@<EC2_PUBLIC_IP>
+EIP_ALLOC=$(aws ec2 allocate-address --domain vpc --query 'AllocationId' --output text)
+
+INSTANCE_ID=$(aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=framevault-prod" \
+  --query "Reservations[0].Instances[0].InstanceId" --output text)
+
+aws ec2 associate-address \
+  --instance-id $INSTANCE_ID \
+  --allocation-id $EIP_ALLOC
 ```
 
-Update system packages and install Docker:
+---
+
+### Step 5 — Install Docker on EC2
+
+Connect via SSH:
 
 ```bash
-# Update package index
+ssh -i /path/to/your-key.pem ubuntu@YOUR_EC2_PUBLIC_IP
+```
+
+On the EC2 instance, run:
+
+```bash
+# Update packages
 sudo apt update && sudo apt upgrade -y
 
-# Install Docker prerequisites
-sudo apt install -y ca-certificates curl gnupg lsb-release git
+# Install prerequisites
+sudo apt install -y ca-certificates curl gnupg git
 
-# Add Docker's official GPG key & repository
+# Add Docker's GPG key and repository
 sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-# Install Docker Engine & Docker Compose Plugin
+# Install Docker Engine + Compose plugin
 sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 
-# Enable non-root docker execution
+# Allow ubuntu user to run docker without sudo
 sudo usermod -aG docker ubuntu
 newgrp docker
 
-# Verify installation
+# Verify
 docker --version
 docker compose version
 ```
 
----
-
-## Step 5: Deploy FrameVault via Docker Compose
-
-### 5.1 Clone the Codebase
+**Add 1 GB Swap — critical for t2.micro with only 1 GB RAM:**
 
 ```bash
-git clone https://github.com/<your-username>/paradise.git framevault
+sudo fallocate -l 1G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+# Verify swap is active
+free -h
+```
+
+---
+
+### Step 6 — Deploy the Application
+
+**6.1 Clone your repository:**
+
+```bash
+git clone https://github.com/YOUR_USERNAME/paradise.git framevault
 cd framevault
 ```
 
-### 5.2 Configure Production Environment Variables
-
-Create `.env` based on `.env.example`:
+**6.2 Create the production environment file:**
 
 ```bash
 cp .env.example .env
 nano .env
 ```
 
-Configure the following values:
+Set these values (edit the file to look like this):
 
 ```ini
-# Environment
+# Application
 APP_ENV=production
 
-# JWT signing secret (generate with: openssl rand -hex 32)
-JWT_SECRET=b8d7a164923e4c02f1a601e847cbb62e519280d94f318991a0cba4837265bc9a
+# Generate with: openssl rand -hex 32
+JWT_SECRET=paste_a_64_char_random_hex_string_here
 
-# Database credentials
-POSTGRES_DB=framevault
-POSTGRES_USER=framevault
-POSTGRES_PASSWORD=generate_a_strong_password_here
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=7
 
-# AWS & S3 Configuration
+# Database
+MYSQL_ROOT_PASSWORD=choose_a_root_password_here
+MYSQL_DATABASE=framevault
+MYSQL_USER=framevault
+MYSQL_PASSWORD=choose_a_strong_password_here
+DATABASE_URL=mysql+pymysql://framevault:choose_a_strong_password_here@db:3306/framevault
+
+# Storage — switch to S3
 STORAGE_BACKEND=s3
 AWS_REGION=us-east-1
-S3_BUCKET_NAME=framevault-assets-prod-12345
+S3_BUCKET_NAME=framevault-assets-yourname-2024
 
-# Notice: Leave AWS_ACCESS_KEY_ID & AWS_SECRET_ACCESS_KEY empty!
-# The backend automatically uses the attached IAM Instance Profile.
+# Leave blank — EC2 IAM Role provides credentials automatically
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 
-# Presigned URL Settings
 PRESIGNED_UPLOAD_EXPIRES=900
 PRESIGNED_DOWNLOAD_EXPIRES=3600
 
-# Public Domain / IP
-DOMAIN_URL=http://<YOUR_EC2_PUBLIC_IP>
-ALLOWED_ORIGINS=http://<YOUR_EC2_PUBLIC_IP>,http://localhost:5173
+# CORS — use your actual EC2 public IP
+DOMAIN_URL=http://YOUR_EC2_PUBLIC_IP
+ALLOWED_ORIGINS=http://YOUR_EC2_PUBLIC_IP
 ```
 
-### 5.3 Build and Launch Containers
-
-Run Docker Compose with the production configuration:
+**6.3 Build and start production containers:**
 
 ```bash
-# Build images and run services detached
-docker compose -f docker-compose.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-Verify that all containers are healthy:
+> First build takes 3–5 minutes. Watch progress with:
+> `docker compose -f docker-compose.prod.yml logs -f`
+
+**6.4 Verify all containers are healthy:**
 
 ```bash
-docker compose ps
+docker compose -f docker-compose.prod.yml ps
 ```
 
 Expected output:
 ```
-NAME                      IMAGE                  COMMAND                  SERVICE    STATUS
-framevault-db             postgres:16-alpine     "docker-entrypoint.s…"   db         Up (healthy)
-framevault-backend        framevault-backend     "uvicorn app.main:ap…"   backend    Up (healthy)
-framevault-frontend       framevault-frontend    "/docker-entrypoint.…"   frontend   Up (healthy)
+NAME                         STATUS
+framevault-db-prod           Up (healthy)
+framevault-backend-prod      Up (healthy)
+framevault-frontend-prod     Up (healthy)
 ```
 
 ---
 
-## Step 6: Verify the Deployment
+### Step 7 — Verify the Deployment
 
-### 6.1 Check Health Endpoint
-From your local terminal:
+From your laptop:
+
 ```bash
-curl http://<YOUR_EC2_PUBLIC_IP>/api/v1/health
-```
-Response:
-```json
-{"status":"healthy","service":"framevault-api","version":"0.1.0","storage_backend":"s3"}
+# Check API health through Nginx
+curl http://YOUR_EC2_PUBLIC_IP/api/v1/health
+
+# Expected:
+# {"status":"healthy","service":"framevault-api","version":"0.1.0","storage_backend":"s3"}
 ```
 
-### 6.2 Browser Verification
-1. Open `http://<YOUR_EC2_PUBLIC_IP>` in your browser.
-2. Register an account or sign in.
-3. Create a collection and upload an image.
-4. Verify the image uploads directly to S3 and previews correctly!
+Then open `http://YOUR_EC2_PUBLIC_IP` in your browser:
+
+1. Register an account
+2. Create a collection
+3. Upload an image
+4. Verify the image loads
+
+Confirm the file is in S3:
+
+```bash
+aws s3 ls s3://framevault-assets-yourname-2024 --recursive
+```
 
 ---
 
-## Step 7: (Optional) Custom Domain & HTTPS with Let's Encrypt
+## 5. Cost Control Measures
 
-To configure a free SSL certificate using Certbot on your EC2 instance:
+### 5.1 Set Up Billing Alerts FIRST
+
+Do this before anything else. Go to **AWS Console → Billing → Budgets → Create budget**
+or use the CLI:
 
 ```bash
-sudo apt install -y certbot python3-certbot-nginx
-
-# Obtain SSL Certificate
-sudo certbot certonly --standalone -d yourdomain.com -d www.yourdomain.com
+aws budgets create-budget \
+  --account-id YOUR_ACCOUNT_ID \
+  --budget '{
+    "BudgetName": "FrameVaultMonthlyLimit",
+    "BudgetLimit": {"Amount": "10", "Unit": "USD"},
+    "TimeUnit": "MONTHLY",
+    "BudgetType": "COST"
+  }' \
+  --notifications-with-subscribers '[{
+    "Notification": {
+      "NotificationType": "ACTUAL",
+      "ComparisonOperator": "GREATER_THAN",
+      "Threshold": 80
+    },
+    "Subscribers": [{
+      "SubscriptionType": "EMAIL",
+      "Address": "your-email@example.com"
+    }]
+  }]'
 ```
 
-Mount the certificates into Nginx or terminate SSL at an **AWS Application Load Balancer (ALB)** with AWS Certificate Manager (ACM).
+This sends you an email if your bill exceeds $8/month.
+
+### 5.2 Stop the Instance When Not Using It
+
+The biggest cost lever. Stop the instance when you're not actively demonstrating the project:
+
+```bash
+# Stop (pauses compute billing; EBS disk continues at ~$1.60/month)
+aws ec2 stop-instances --instance-ids YOUR_INSTANCE_ID
+
+# Start when needed
+aws ec2 start-instances --instance-ids YOUR_INSTANCE_ID
+```
+
+With an Elastic IP, the app resumes at the same IP address after every start.
+
+### 5.3 S3 Lifecycle Policy (Auto-delete soft-deleted assets after 30 days)
+
+```bash
+aws s3api put-bucket-lifecycle-configuration \
+  --bucket framevault-assets-yourname-2024 \
+  --lifecycle-configuration '{
+    "Rules": [{
+      "ID": "DeleteTrash",
+      "Filter": {"Prefix": "framevault/"},
+      "Status": "Enabled",
+      "Expiration": {"Days": 90}
+    }]
+  }'
+```
 
 ---
 
-## Useful Maintenance Commands
+## 6. Updating the Application
+
+When you push code changes:
 
 ```bash
-# View real-time logs
-docker compose logs -f
+# SSH into EC2
+ssh -i /path/to/key.pem ubuntu@YOUR_EC2_PUBLIC_IP
 
-# View backend logs specifically
-docker compose logs -f backend
+cd framevault
 
-# Restart services
-docker compose restart
+# Pull latest changes
+git pull origin main
 
-# Stop services
-docker compose down
+# Rebuild and restart (only changed layers rebuild — fast)
+docker compose -f docker-compose.prod.yml up -d --build
 
-# Run database shell
-docker compose exec db psql -U framevault -d framevault
+# Verify
+docker compose -f docker-compose.prod.yml ps
+```
+
+---
+
+## 7. Useful Operations
+
+```bash
+# Live logs for all services
+docker compose -f docker-compose.prod.yml logs -f
+
+# Backend logs only
+docker compose -f docker-compose.prod.yml logs -f backend
+
+# Open shell inside backend container
+docker compose -f docker-compose.prod.yml exec backend bash
+
+# Open MySQL shell
+docker compose -f docker-compose.prod.yml exec db mysql -u framevault -p framevault
+
+# Restart just the backend (after config change)
+docker compose -f docker-compose.prod.yml restart backend
+
+# Stop all containers (preserves data volumes)
+docker compose -f docker-compose.prod.yml down
+
+# Stop and wipe all data (WARNING: deletes database)
+docker compose -f docker-compose.prod.yml down -v
+```
+
+---
+
+## 8. 12-Month Credit Forecast
+
+| Month | Estimated Bill | Credit Remaining (from $100) |
+|---|---|---|
+| Month 1–12 (free tier) | ~$0.12 | ~$98.56 |
+| Month 13 (free tier expired) | ~$8.00 | ~$90.56 |
+| Month 14 | ~$8.00 | ~$82.56 |
+| Month 25 | ~$8.00 | ~$2.56 |
+
+**Your $100 credit covers ~24 months total** (12 months free tier + 12 months at ~$8/month).
+
+If you stop the instance when not actively demonstrating it, the credit stretches much further.
+
+---
+
+## 9. Quick Reference — Key Values to Record
+
+After deployment, write these down:
+
+```
+EC2 Instance ID:        i-xxxxxxxxxxxxxxxxx
+EC2 Public IP:          xxx.xxx.xxx.xxx
+Elastic IP (static):    xxx.xxx.xxx.xxx
+S3 Bucket Name:         framevault-assets-yourname-2024
+AWS Region:             us-east-1
+IAM Role:               FrameVaultEC2Role
+Security Group:         framevault-sg
+```
+
+---
+
+## 10. Full Cleanup (Stop All AWS Charges)
+
+When permanently done with the project:
+
+```bash
+# 1. Terminate EC2 instance (deletes instance + EBS volume)
+aws ec2 terminate-instances --instance-ids YOUR_INSTANCE_ID
+
+# 2. Release Elastic IP (you're billed if allocated but not attached)
+aws ec2 release-address --allocation-id YOUR_EIP_ALLOCATION_ID
+
+# 3. Empty and delete S3 bucket
+aws s3 rm s3://framevault-assets-yourname-2024 --recursive
+aws s3api delete-bucket --bucket framevault-assets-yourname-2024
+
+# 4. Delete Security Group
+aws ec2 delete-security-group --group-name framevault-sg
+
+# 5. Clean up IAM
+aws iam remove-role-from-instance-profile \
+  --instance-profile-name FrameVaultInstanceProfile \
+  --role-name FrameVaultEC2Role
+aws iam delete-instance-profile \
+  --instance-profile-name FrameVaultInstanceProfile
+aws iam detach-role-policy \
+  --role-name FrameVaultEC2Role \
+  --policy-arn arn:aws:iam::YOUR_ACCOUNT_ID:policy/FrameVaultS3Policy
+aws iam delete-role --role-name FrameVaultEC2Role
+aws iam delete-policy \
+  --policy-arn arn:aws:iam::YOUR_ACCOUNT_ID:policy/FrameVaultS3Policy
 ```

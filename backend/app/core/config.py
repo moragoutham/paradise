@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # Database
-    # Default to sqlite for effortless local zero-dependency runs, or postgres in docker/prod
+    # Default to sqlite for effortless local zero-dependency runs, or mysql in docker/prod
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./framevault.db")
 
     # Storage Backend: "s3" or "local"
