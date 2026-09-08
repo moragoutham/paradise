@@ -32,6 +32,24 @@ jobs:
             git reset --hard origin/main
             docker compose up -d --build --remove-orphans
             docker image prune -f
-            curl --fail --silent --show-error http://localhost/health >/dev/null
+
+            wait_for_url() {
+              url="$1"
+              attempts=30
+              until curl --fail --silent --show-error "$url" >/dev/null; do
+                attempts=$((attempts - 1))
+                if [ "$attempts" -eq 0 ]; then
+                  echo "Health check failed: $url"
+                  docker compose ps
+                  docker compose logs --tail=80 backend frontend
+                  exit 1
+                fi
+                sleep 2
+              done
+            }
+
+            wait_for_url http://localhost:8000/health
+            wait_for_url http://localhost:3000/health
+            wait_for_url http://localhost/health
             docker compose ps
           REMOTE
