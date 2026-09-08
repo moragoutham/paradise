@@ -6,7 +6,6 @@ import {
   FolderOpen,
   HardDrive,
   Heart,
-  Upload,
   Clock,
   Sparkles,
   ArrowRight,
@@ -88,13 +87,6 @@ export function DashboardPage() {
             Amazon S3 Cloud Asset Management Workspace
           </p>
         </div>
-        <button
-          onClick={() => setIsUploadOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium transition-all duration-150 hover:scale-[1.02] shadow-glow-brand"
-        >
-          <Upload className="w-4 h-4" />
-          Upload Asset
-        </button>
       </motion.div>
 
       {/* Stats Grid */}
@@ -148,7 +140,12 @@ export function DashboardPage() {
                       </div>
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2 justify-between">
-                      <p className="text-2xs text-white font-medium truncate">{asset.title}</p>
+                      <Link
+                        to={`/assets/${asset.id}`}
+                        className="text-2xs text-white font-medium truncate hover:underline"
+                      >
+                        {asset.title}
+                      </Link>
                       <button
                         onClick={() => setEditingAsset(asset)}
                         className="p-1 rounded bg-white/20 hover:bg-white/40 text-white"
@@ -188,19 +185,6 @@ export function DashboardPage() {
               <Sparkles className="w-4 h-4 text-brand-500" />
               <h2 className="text-sm font-semibold text-[var(--text-primary)]">Quick Actions</h2>
             </div>
-            <button
-              onClick={() => setIsUploadOpen(true)}
-              className="w-full flex items-center gap-3 p-3 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-subtle)] transition-all text-left group"
-            >
-              <div className="icon-container w-9 h-9 bg-brand-500 text-white rounded-xl">
-                <Upload className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-[var(--text-primary)] group-hover:text-brand-500">Upload to S3</p>
-                <p className="text-2xs text-[var(--text-tertiary)]">Presigned direct upload</p>
-              </div>
-            </button>
-
             <button
               onClick={() => setIsCreateColOpen(true)}
               className="w-full flex items-center gap-3 p-3 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-subtle)] transition-all text-left group"

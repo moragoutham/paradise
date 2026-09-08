@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { RotateCw, FlipHorizontal, Sliders, Save, X, RefreshCw } from 'lucide-react'
+import { RotateCw, FlipHorizontal, FlipVertical, Sliders, Save, X, RefreshCw, Download } from 'lucide-react'
 import { assetsApi, uploadToS3 } from '@/services/api'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Asset } from '@/types'
@@ -20,6 +20,9 @@ export function ImageEditorModal({ asset, isOpen, onClose }: ImageEditorModalPro
   const [saturation, setSaturation] = useState(100)
   const [rotation, setRotation] = useState(0)
   const [isFlippedH, setIsFlippedH] = useState(false)
+  const [isFlippedV, setIsFlippedV] = useState(false)
+  const [zoom, setZoom] = useState(100)
+  const [imageError, setImageError] = useState(false)
   
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -31,6 +34,8 @@ export function ImageEditorModal({ asset, isOpen, onClose }: ImageEditorModalPro
     setSaturation(100)
     setRotation(0)
     setIsFlippedH(false)
+    setIsFlippedV(false)
+    setZoom(100)
   }
 
   // Draw filtered image on canvas
@@ -45,6 +50,9 @@ export function ImageEditorModal({ asset, isOpen, onClose }: ImageEditorModalPro
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.src = asset.previewUrl
+    setImageError(false)
+
+    img.onerror = () => setImageError(true)
 
     img.onload = () => {
       const isRotated90 = rotation % 180 !== 0
@@ -58,6 +66,7 @@ export function ImageEditorModal({ asset, isOpen, onClose }: ImageEditorModalPro
       ctx.translate(canvas.width / 2, canvas.height / 2)
       ctx.rotate((rotation * Math.PI) / 180)
       if (isFlippedH) ctx.scale(-1, 1)
+      if (isFlippedV) ctx.scale(1, -1)
 
       // Apply CSS-like filters
       ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`
@@ -65,7 +74,16 @@ export function ImageEditorModal({ asset, isOpen, onClose }: ImageEditorModalPro
       ctx.drawImage(img, -img.width / 2, -img.height / 2)
       ctx.restore()
     }
-  }, [isOpen, asset, brightness, contrast, saturation, rotation, isFlippedH])
+  }, [isOpen, asset, brightness, contrast, saturation, rotation, isFlippedH, isFlippedV])
+
+  const handleDownloadPreview = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const link = document.createElement('a')
+    link.download = `edited-${asset?.title || 'asset'}.jpg`
+    link.href = canvas.toDataURL('image/jpeg', 0.9)
+    link.click()
+  }
 
   const handleSave = async () => {
     if (!asset || !canvasRef.current) return
@@ -86,7 +104,8 @@ export function ImageEditorModal({ asset, isOpen, onClose }: ImageEditorModalPro
         contentType: 'image/jpeg',
         fileSize: file.size,
       })
-      const { uploadUrl } = replaceRes.data
+      const uploadUrl = replaceRes.data.upload_url ?? replaceRes.data.uploadUrl
+      if (!uploadUrl) throw new Error('Editor returned an invalid upload URL.')
 
       // 3. Upload to S3/storage directly
       await uploadToS3(uploadUrl, file)
@@ -133,10 +152,15 @@ export function ImageEditorModal({ asset, isOpen, onClose }: ImageEditorModalPro
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4 flex-1 overflow-hidden min-h-0">
             {/* Canvas Preview */}
             <div className="md:col-span-2 flex items-center justify-center bg-black/40 rounded-2xl overflow-hidden p-4 relative">
-              <canvas
-                ref={canvasRef}
-                className="max-h-[50vh] max-w-full object-contain rounded-lg shadow-lg"
-              />
+              {imageError ? (
+                <p className="text-xs text-red-400">Unable to load this image preview.</p>
+              ) : (
+                <canvas
+                  ref={canvasRef}
+                  className="max-h-[50vh] max-w-full object-contain rounded-lg shadow-lg transition-transform"
+                  style={{ transform: `scale(${zoom / 100})` }}
+                />
+              )}
             </div>
 
             {/* Controls */}
@@ -167,10 +191,32 @@ export function ImageEditorModal({ asset, isOpen, onClose }: ImageEditorModalPro
                 >
                   <FlipHorizontal className="w-3.5 h-3.5" /> Flip H
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setIsFlippedV((f) => !f)}
+                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] text-xs text-[var(--text-primary)] hover:border-[var(--border-default)]"
+                >
+                  <FlipVertical className="w-3.5 h-3.5" /> Flip V
+                </button>
               </div>
 
               {/* Sliders */}
               <div className="space-y-3 pt-2">
+                <div>
+                  <div className="flex justify-between text-xs text-[var(--text-secondary)] mb-1">
+                    <span>Preview zoom</span>
+                    <span className="tabular-nums">{zoom}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="50"
+                    max="150"
+                    value={zoom}
+                    onChange={(e) => setZoom(Number(e.target.value))}
+                    className="w-full accent-brand-500 cursor-pointer"
+                  />
+                </div>
+
                 <div>
                   <div className="flex justify-between text-xs text-[var(--text-secondary)] mb-1">
                     <span>Brightness</span>
@@ -227,6 +273,14 @@ export function ImageEditorModal({ asset, isOpen, onClose }: ImageEditorModalPro
 
           {/* Footer Actions */}
           <div className="flex items-center justify-end gap-2 pt-4 border-t border-[var(--border-subtle)] mt-4">
+            <button
+              onClick={handleDownloadPreview}
+              disabled={isSaving || imageError}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-xl border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Download Preview
+            </button>
             <button
               onClick={onClose}
               disabled={isSaving}

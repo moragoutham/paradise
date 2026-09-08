@@ -1,5 +1,5 @@
-import { Menu, Search, Sun, Moon, Monitor, Bell, Upload } from 'lucide-react'
-import { useUIStore, useAuthStore, useUploadStore } from '@/stores'
+import { Menu, Search, Sun, Moon, Monitor, Bell } from 'lucide-react'
+import { useUIStore, useAuthStore } from '@/stores'
 import { cn } from '@/lib/utils'
 import type { Theme } from '@/types'
 
@@ -11,7 +11,6 @@ const themeOptions: { value: Theme; icon: typeof Sun; label: string }[] = [
 
 export function Topbar() {
   const { theme, setTheme, toggleSidebar, sidebarCollapsed } = useUIStore()
-  const { openUploadPanel } = useUploadStore()
   const { user } = useAuthStore()
 
   // Cycle through themes
@@ -82,21 +81,6 @@ export function Topbar() {
 
       {/* ── Right actions ───────────────────────────────────────────────── */}
       <div className="flex items-center gap-1 sm:gap-2 ml-4">
-        {/* Upload button — visible on wider screens */}
-        <button
-          onClick={openUploadPanel}
-          className={cn(
-            'hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl',
-            'bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium',
-            'transition-all duration-150 hover:scale-[1.02] active:scale-[0.98]',
-            'shadow-glow-brand',
-          )}
-          aria-label="Upload new asset"
-        >
-          <Upload className="w-4 h-4" aria-hidden="true" />
-          <span>Upload</span>
-        </button>
-
         {/* Notifications */}
         <button
           className={cn(

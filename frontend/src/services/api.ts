@@ -3,6 +3,13 @@ import { useAuthStore } from '@/stores'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
 
+function normalizeAsset(asset: any) {
+  return {
+    ...asset,
+    previewUrl: asset.previewUrl ?? asset.preview_url ?? null,
+  }
+}
+
 export const apiClient = axios.create({
   baseURL: `${BASE_URL}/api/v1`,
   headers: {
@@ -105,9 +112,31 @@ export const collectionsApi = {
 
 // ── Assets API ────────────────────────────────────────────────────────────────
 export const assetsApi = {
-  list: (params?: Record<string, unknown>) => apiClient.get('/assets', { params }),
-  summary: () => apiClient.get('/assets/stats/summary'),
-  get: (id: string) => apiClient.get(`/assets/${id}`),
+  list: async (params?: Record<string, unknown>) => {
+    const response = await apiClient.get('/assets', { params })
+    return {
+      ...response,
+      data: {
+        ...response.data,
+        items: response.data.items.map(normalizeAsset),
+      },
+    }
+  },
+  summary: async () => {
+    const response = await apiClient.get('/assets/stats/summary')
+    return {
+      ...response,
+      data: {
+        ...response.data,
+        recent_assets: response.data.recent_assets.map(normalizeAsset),
+        favorite_assets: response.data.favorite_assets.map(normalizeAsset),
+      },
+    }
+  },
+  get: async (id: string) => {
+    const response = await apiClient.get(`/assets/${id}`)
+    return { ...response, data: normalizeAsset(response.data) }
+  },
   requestUploadUrl: (data: {
     title: string
     contentType: string
@@ -125,16 +154,25 @@ export const assetsApi = {
     collection_id: data.collectionId,
     tags: data.tags,
   }),
-  confirmUpload: (id: string) => apiClient.patch(`/assets/${id}/confirm-upload`),
-  update: (
-    id: string,
-    data: any,
-  ) => apiClient.patch(`/assets/${id}`, data),
+  confirmUpload: async (id: string) => {
+    const response = await apiClient.patch(`/assets/${id}/confirm-upload`)
+    return { ...response, data: normalizeAsset(response.data) }
+  },
+  update: async (id: string, data: any) => {
+    const response = await apiClient.patch(`/assets/${id}`, data)
+    return { ...response, data: normalizeAsset(response.data) }
+  },
   delete: (id: string) => apiClient.delete(`/assets/${id}`),
-  restore: (id: string) => apiClient.patch(`/assets/${id}/restore`),
+  restore: async (id: string) => {
+    const response = await apiClient.patch(`/assets/${id}/restore`)
+    return { ...response, data: normalizeAsset(response.data) }
+  },
   permanentDelete: (id: string) => apiClient.delete(`/assets/${id}/permanent`),
   requestReplaceUrl: (id: string, data: { contentType: string; fileSize: number }) =>
-    apiClient.post(`/assets/${id}/replace-url`, data),
+    apiClient.post(`/assets/${id}/replace-url`, {
+      content_type: data.contentType,
+      file_size: data.fileSize,
+    }),
   favorites: () => apiClient.get('/assets', { params: { favoritesOnly: true } }),
   trash: () => apiClient.get('/assets', { params: { deleted: true } }),
 }
