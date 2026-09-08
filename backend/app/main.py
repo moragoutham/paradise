@@ -1,15 +1,23 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.core.database import Base, engine
+from app.models import User, Collection, Asset, Tag, asset_tags
+from app.db.seed import seed_database
 from app.api.v1 import api_router
+
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Automatically ensure database tables exist on startup
-    Base.metadata.create_all(bind=engine)
+    # Automatically ensure database tables exist and seed initial demo data on startup
+    try:
+        seed_database()
+    except Exception as e:
+        logger.warning(f"Database auto-seed note: {e}")
     yield
 
 app = FastAPI(
@@ -19,10 +27,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Set up CORS
+# Set up CORS (allow dynamic EC2 public IP, localhost, and configured domains)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins or ["*"],
+    allow_origin_regex=r"^https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
