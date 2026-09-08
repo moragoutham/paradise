@@ -2,6 +2,8 @@ import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
 import { useUIStore } from '@/stores'
+import { useUploadStore } from '@/stores'
+import { UploadModal } from '@/components/assets/UploadModal'
 import { cn } from '@/lib/utils'
 
 /**
@@ -10,6 +12,7 @@ import { cn } from '@/lib/utils'
  */
 export function AppLayout() {
   const { sidebarCollapsed } = useUIStore()
+  const { isUploadPanelOpen, closeUploadPanel } = useUploadStore()
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg-primary)]">
@@ -36,6 +39,7 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
+      <UploadModal isOpen={isUploadPanelOpen} onClose={closeUploadPanel} />
     </div>
   )
 }

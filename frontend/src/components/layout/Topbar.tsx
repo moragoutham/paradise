@@ -1,5 +1,5 @@
 import { Menu, Search, Sun, Moon, Monitor, Bell, Upload } from 'lucide-react'
-import { useUIStore, useAuthStore } from '@/stores'
+import { useUIStore, useAuthStore, useUploadStore } from '@/stores'
 import { cn } from '@/lib/utils'
 import type { Theme } from '@/types'
 
@@ -11,6 +11,7 @@ const themeOptions: { value: Theme; icon: typeof Sun; label: string }[] = [
 
 export function Topbar() {
   const { theme, setTheme, toggleSidebar, sidebarCollapsed } = useUIStore()
+  const { openUploadPanel } = useUploadStore()
   const { user } = useAuthStore()
 
   // Cycle through themes
@@ -83,6 +84,7 @@ export function Topbar() {
       <div className="flex items-center gap-1 sm:gap-2 ml-4">
         {/* Upload button — visible on wider screens */}
         <button
+          onClick={openUploadPanel}
           className={cn(
             'hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl',
             'bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium',

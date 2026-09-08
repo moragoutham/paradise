@@ -110,7 +110,12 @@ export function UploadModal({ isOpen, onClose, defaultCollectionId }: UploadModa
         tags,
       })
 
-      const { assetId, uploadUrl } = presignedRes.data
+      const assetId = presignedRes.data.asset_id ?? presignedRes.data.assetId
+      const uploadUrl = presignedRes.data.upload_url ?? presignedRes.data.uploadUrl
+
+      if (!assetId || !uploadUrl) {
+        throw new Error('Upload service returned an invalid upload URL.')
+      }
 
       // Stage 2: Direct browser-to-S3 / storage upload using presigned PUT URL
       setUploadStage('uploading')

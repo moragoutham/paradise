@@ -12,7 +12,7 @@ import {
   Upload,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useUIStore, useAuthStore } from '@/stores'
+import { useUIStore, useAuthStore, useUploadStore } from '@/stores'
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -28,6 +28,7 @@ const bottomNavItems = [
 
 export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar } = useUIStore()
+  const { openUploadPanel } = useUploadStore()
   const { user } = useAuthStore()
   const location = useLocation()
 
@@ -112,6 +113,7 @@ export function Sidebar() {
         {/* ── Upload CTA ─────────────────────────────────────────────────── */}
         <div className={cn('px-3 pt-4 pb-2 flex-shrink-0', sidebarCollapsed && 'flex justify-center')}>
           <button
+            onClick={openUploadPanel}
             className={cn(
               'flex items-center gap-2.5 rounded-xl bg-brand-500 hover:bg-brand-600',
               'text-white font-medium text-sm transition-all duration-150',

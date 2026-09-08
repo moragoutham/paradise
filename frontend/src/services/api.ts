@@ -106,6 +106,7 @@ export const collectionsApi = {
 // ── Assets API ────────────────────────────────────────────────────────────────
 export const assetsApi = {
   list: (params?: Record<string, unknown>) => apiClient.get('/assets', { params }),
+  summary: () => apiClient.get('/assets/stats/summary'),
   get: (id: string) => apiClient.get(`/assets/${id}`),
   requestUploadUrl: (data: {
     title: string
@@ -115,7 +116,15 @@ export const assetsApi = {
     collectionId?: string
     description?: string
     tags?: string[]
-  }) => apiClient.post('/assets/upload-url', data),
+  }) => apiClient.post('/assets/upload-url', {
+    title: data.title,
+    description: data.description,
+    content_type: data.contentType,
+    file_size: data.fileSize,
+    file_name: data.fileName,
+    collection_id: data.collectionId,
+    tags: data.tags,
+  }),
   confirmUpload: (id: string) => apiClient.patch(`/assets/${id}/confirm-upload`),
   update: (
     id: string,

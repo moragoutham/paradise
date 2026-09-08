@@ -32,15 +32,8 @@ export function DashboardPage() {
   const { data: stats, isLoading } = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: async () => {
-      const res = await assetsApi.list({ sort_by: 'created_at', page_size: 1 })
-      // Or call stats summary endpoint
-      const statsRes = await fetch('/api/v1/assets/stats/summary', {
-        headers: {
-          Authorization: `Bearer ${useAuthStore.getState().accessToken}`,
-        },
-      })
-      if (!statsRes.ok) throw new Error('Failed to fetch stats')
-      return await statsRes.json()
+      const res = await assetsApi.summary()
+      return res.data
     },
   })
 
