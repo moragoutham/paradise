@@ -28,7 +28,16 @@ export function CreateCollectionModal({ isOpen, onClose }: CreateCollectionModal
       handleClose()
     },
     onError: (err: any) => {
-      setError(err.response?.data?.detail || 'Failed to create collection')
+      const detail = err.response?.data?.detail
+      let msg: string
+      if (Array.isArray(detail)) {
+        msg = detail.map((e: any) => typeof e === 'string' ? e : e.msg || JSON.stringify(e)).join(', ')
+      } else if (typeof detail === 'string') {
+        msg = detail
+      } else {
+        msg = 'Failed to create collection'
+      }
+      setError(msg)
     },
   })
 

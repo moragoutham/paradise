@@ -133,7 +133,16 @@ export function UploadModal({ isOpen, onClose, defaultCollectionId }: UploadModa
       }, 1200)
     } catch (err: any) {
       setUploadStage('error')
-      setErrorMessage(err.response?.data?.detail || err.message || 'Upload failed. Please try again.')
+      const detail = err.response?.data?.detail
+      let msg: string
+      if (Array.isArray(detail)) {
+        msg = detail.map((e: any) => typeof e === 'string' ? e : e.msg || JSON.stringify(e)).join(', ')
+      } else if (typeof detail === 'string') {
+        msg = detail
+      } else {
+        msg = err.message || 'Upload failed. Please try again.'
+      }
+      setErrorMessage(msg)
     }
   }
 
